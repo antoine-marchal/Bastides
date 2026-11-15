@@ -6,8 +6,12 @@ import { GameHost } from "../multiplayer/authority";
 import type { HostTransport } from "../multiplayer/authority";
 import { ClientSession } from "../multiplayer/session";
 import type { Audit } from "../multiplayer/session";
+import { RelayHost, RelayLink } from "../multiplayer/relayClient";
 import type { Recording } from "../persistence/serialization";
 import type { BotService, NetServer } from "./platform";
+
+/** Side of the screen a player sits at, in table mode: 0 bottom, 1 left, 2 top, 3 right. */
+export type TableSide = 0 | 1 | 2 | 3;
 
 export interface GameSession {
   readonly kind: "local" | "host" | "client";
@@ -20,6 +24,8 @@ export interface GameSession {
   seatConnected(index: number): boolean;
   status(): string;
   audit(): Audit | null;
+  /** Table mode: where the human playing seat `index` sits around this screen, or null (not played here). */
+  tableSide(index: number): TableSide | null;
   leave(): void;
 }
 
@@ -27,15 +33,18 @@ export class HostedSession implements GameSession {
   onChange: (() => void) | null = null;
   readonly host: GameHost;
   server: NetServer | null = null;
+  relay: RelayHost | null = null;
+  /** Table-mode sides of the humans playing on this machine, by seat id. */
+  sides = new Map<string, TableSide>();
   constructor(private bots: BotService) {
     // The network server may be attached later (hosting): route through a proxy transport.
     const transport: HostTransport = {
-      send: (conn, text) => this.server?.transport.send(conn, text),
-      close: (conn) => this.server?.transport.close(conn),
+      send: (conn, text) => (this.relay?.transport ?? this.server?.transport)?.send(conn, text),
+      close: (conn) => (this.relay?.transport ?? this.server?.transport)?.close(conn),
     };
     this.host = new GameHost({ random: () => randomSeedString(), botRunner: bots.run, transport, onChange: () => this.onChange?.() });
   }
-  get kind(): "local" | "host" { return this.server ? "host" : "local"; }
+  get kind(): "local" | "host" { return this.server || this.relay ? "host" : "local"; }
   get state(): GameState | null { return this.host.state; }
   canAct(): boolean {
     const s = this.host.state;
@@ -57,8 +66,46 @@ export class HostedSession implements GameSession {
     return !seat.local && !seat.connected ? "en attente du joueur absent" : "";
   }
   audit(): Audit | null { return null; }
-  leave(): void { this.host.shutdown(); this.bots.dispose(); void this.server?.stop(); }
+  /** Apply remembered sides (by seat index) to the humans of a resumed game. */
+  useSides(sides: number[]): void {
+    this.host.seats.forEach((seat, i) => { if (seat.local && seat.kind === "human") this.sides.set(seat.id, ((sides[i] ?? 0) & 3) as TableSide); });
+  }
+  tableSide(i: number): TableSide | null {
+    const seat = this.host.seats[i];
+    return seat && seat.local && seat.kind === "human" ? this.sides.get(seat.id) ?? 0 : null;
+  }
+  leave(): void {
+    this.host.shutdown();
+    this.bots.dispose();
+    void this.server?.stop();
+    // Let the shutdown frames leave before the room closes.
+    const relay = this.relay;
+    if (relay) setTimeout(() => void relay.stop(), 400);
+  }
 }
+
+/** A guest's connection to the host: a LAN WebSocket or an online relay mailbox. */
+export interface Link {
+  onopen: (() => void) | null;
+  onmessage: ((text: string) => void) | null;
+  onclose: ((reason?: string, fatal?: boolean) => void) | null;
+  send(text: string): void;
+  close(): void;
+}
+
+export function webSocketLink(url: string): Link {
+  const ws = new WebSocket(url);
+  const link: Link = {
+    onopen: null, onmessage: null, onclose: null,
+    send: (t) => { if (ws.readyState === WebSocket.OPEN) ws.send(t); },
+    close: () => ws.close(),
+  };
+  ws.onopen = () => link.onopen?.();
+  ws.onmessage = (e) => { if (typeof e.data === "string") link.onmessage?.(e.data); };
+  ws.onclose = () => link.onclose?.();
+  return link;
+}
+export const relayLink = (server: string, room: string) => (): Link => new RelayLink(server, room);
 
 export class RemoteSession implements GameSession {
   readonly kind = "client" as const;
@@ -66,25 +113,27 @@ export class RemoteSession implements GameSession {
   client: ClientSession;
   connected = false;
   closedByUser = false;
-  private ws: WebSocket | null = null;
+  private link: Link | null = null;
   private retry = 0;
-  constructor(private url: string, name: string) {
-    this.client = new ClientSession({ name, entropy: randomSeedString(), send: (t) => { if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(t); }, onChange: () => this.onChange?.() });
+  /** `label`: what the UI shows for the host (address or room code). */
+  constructor(private connectLink: () => Link, name: string, readonly label: string) {
+    this.client = new ClientSession({ name, entropy: randomSeedString(), send: (t) => this.link?.send(t), onChange: () => this.onChange?.() });
     this.connect();
   }
   private connect(): void {
     if (this.closedByUser) return;
-    let ws: WebSocket;
-    try { ws = new WebSocket(this.url); } catch { this.client.error = "Adresse invalide."; this.onChange?.(); return; }
-    this.ws = ws;
-    ws.onopen = () => { this.connected = true; this.retry = 0; this.client.onOpen(); this.onChange?.(); };
-    ws.onmessage = (e) => { if (typeof e.data === "string") this.client.onMessage(e.data); };
-    ws.onclose = () => {
+    let link: Link;
+    try { link = this.connectLink(); } catch { this.client.error = "Adresse invalide."; this.onChange?.(); return; }
+    this.link = link;
+    link.onopen = () => { this.connected = true; this.retry = 0; this.client.onOpen(); this.onChange?.(); };
+    link.onmessage = (t) => this.client.onMessage(t);
+    link.onclose = (reason, fatal) => {
+      if (this.link !== link) return;
       this.connected = false;
-      this.onChange?.();
       // Reconnect with the session token while a game is running.
-      if (!this.closedByUser && this.client.token && this.retry < 30) { this.retry++; setTimeout(() => this.connect(), 1500); }
-      else if (!this.client.token && !this.client.error) { this.client.error = "Connexion impossible à l'hôte."; this.onChange?.(); }
+      if (!this.closedByUser && !fatal && !this.client.error && this.client.token && this.retry < 30) { this.retry++; setTimeout(() => this.connect(), 1500); }
+      else if (!this.closedByUser && !this.client.error) this.client.error = reason || (this.client.token ? "Connexion perdue avec l'hôte." : "Connexion impossible à l'hôte.");
+      this.onChange?.();
     };
   }
   get state(): GameState | null { return this.client.state; }
@@ -103,5 +152,6 @@ export class RemoteSession implements GameSession {
   }
   status(): string { return this.connected ? "" : "connexion perdue — reconnexion…"; }
   audit(): Audit | null { return this.client.audit; }
-  leave(): void { this.closedByUser = true; try { this.client.leave(); } catch { /* closed */ } this.ws?.close(); }
+  tableSide(): TableSide | null { return null; }
+  leave(): void { this.closedByUser = true; try { this.client.leave(); } catch { /* closed */ } const l = this.link; setTimeout(() => l?.close(), 300); }
 }

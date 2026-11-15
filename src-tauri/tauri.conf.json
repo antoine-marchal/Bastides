@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Bastides",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "fr.bastides.app",
   "build": {
     "frontendDist": "../dist",
@@ -15,7 +15,7 @@
       { "label": "main", "title": "Bastides", "width": 1280, "height": 820, "minWidth": 960, "minHeight": 620, "decorations": false, "shadow": true }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost ws:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; worker-src 'self' blob:; connect-src 'self' ipc: http://ipc.localhost ws: wss: https: http:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     }
   },
   "bundle": {

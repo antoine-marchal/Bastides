@@ -15,6 +15,7 @@ import type { TileBitmap } from "../procedural/rendering/tileCache";
 import type { MeepleOption } from "../game/gameEngine";
 import type { GameState } from "../game/state";
 import { PLAYER_COLORS } from "./dom";
+import { BoardView3D } from "./board3d";
 
 const S = TILE_SIZE;
 
@@ -23,6 +24,16 @@ export interface Spot { option: MeepleOption; x: number; y: number }
 export interface Highlight { features: Map<number, Set<number>>; color: string }
 interface Popup { x: number; y: number; text: string; color: string; t0: number }
 interface PointerPosition { x: number; y: number }
+
+export type Board = BoardView | BoardView3D;
+
+/** Live 3D board when asked for and WebGL works; the 2D canvas board otherwise. */
+export function createBoardView(canvas: HTMLCanvasElement, cache: TileCache, prefer3d = true): Board {
+  if (prefer3d) {
+    try { return new BoardView3D(canvas, cache); } catch (e) { console.warn("3D board unavailable, using the 2D board", e); }
+  }
+  return new BoardView(canvas, cache);
+}
 
 export class BoardView {
   camera = { x: S / 2, y: S / 2, zoom: 1 };

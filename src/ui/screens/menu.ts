@@ -2,7 +2,8 @@ import { createGame, legalPlacements, applyUnchecked } from "../../game/gameEngi
 import { DEFAULT_DECK_PARAMS, TurnPhase } from "../../game/state";
 import { loadSave, parseSave } from "../../persistence/serialization";
 import type { App } from "../app";
-import { BoardView } from "../boardRenderer";
+import { createBoardView } from "../boardRenderer";
+import type { Board } from "../boardRenderer";
 import { icon } from "../heraldry";
 import { button, h, slider, toast } from "../dom";
 import { createBotService, isTauri, saveSettings, saveStore } from "../platform";
@@ -14,8 +15,8 @@ import { savesScreen } from "./saves";
 import { setupScreen } from "./setup";
 
 /** A small procedural landscape behind the menu (generated on the fly, different every day). */
-function backdrop(app: App, canvas: HTMLCanvasElement): BoardView {
-  const view = new BoardView(canvas, app.cache);
+function backdrop(app: App, canvas: HTMLCanvasElement): Board {
+  const view = createBoardView(canvas, app.cache, app.settings.board3d);
   view.interactive = false;
   const s = createGame({ mode: "sandbox", deckSize: 0, params: { ...DEFAULT_DECK_PARAMS, cityDensity: 1.15 }, farmers: true, seed: "menu-" + new Date().toISOString().slice(0, 10), players: [{ id: "a", name: "", color: 0, kind: "bot" }, { id: "b", name: "", color: 1, kind: "bot" }] });
   // Enough tiles that the map covers the art area at any aspect, portrait phones included.
@@ -39,6 +40,7 @@ export function menuScreen(app: App) {
       const { rec, state } = loadSave(parseSave(await saveStore().read("autosave")));
       const session = new HostedSession(createBotService(() => app.settings.botDelay));
       session.host.resume(rec, state);
+      session.useSides(app.settings.tableSides);
       app.show(gameScreen(session));
     } catch (e) { toast((e as Error).message, "error"); }
   });
@@ -54,14 +56,14 @@ export function menuScreen(app: App) {
       button("Historique et replays", () => app.show(savesScreen)),
       button("Générateur de tuiles", () => app.show(labScreen)),
       button("Paramètres", () => app.show(settingsScreen)),
-      h("div", { class: "menu-foot muted small" }, isTauri() ? "Application de bureau" : "Version navigateur", " · tout est généré, aucune image embarquée")),
+      h("div", { class: "menu-foot muted small" }, "")),
     h("div", { class: "menu-art" }, canvas));
   return { el, dispose: () => view.destroy() };
 }
 
 export function settingsScreen(app: App) {
   const s = app.settings;
-  const check = (label: string, key: "sound" | "autoCenter" | "showLegal" | "perf") =>
+  const check = (label: string, key: "sound" | "autoCenter" | "showLegal" | "perf" | "board3d") =>
     h("label", null, h("input", { type: "checkbox", checked: s[key], onchange: (e: Event) => { s[key] = (e.target as HTMLInputElement).checked; saveSettings(s); } }), label);
   const delayOut = h("span", null, `${s.botDelay} ms`);
   const el = h("div", { class: "screen" }, h("div", { class: "screen-inner" },
@@ -71,6 +73,7 @@ export function settingsScreen(app: App) {
       check("Sons synthétisés", "sound"),
       check("Centrer automatiquement la caméra sur la dernière tuile", "autoCenter"),
       check("Surligner les placements autorisés", "showLegal"),
+      check("Plateau en 3D (relief, perspective et ombres)", "board3d"),
       check("Afficher les mesures de performance en jeu", "perf"),
       h("div", { class: "field" }, h("span", null, "Délai minimal des bots"), slider(0, 2000, 100, s.botDelay, (v) => { s.botDelay = v; delayOut.textContent = `${v} ms`; saveSettings(s); }), delayOut)),
     h("div", { class: "card" },

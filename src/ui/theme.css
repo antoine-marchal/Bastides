@@ -69,12 +69,12 @@ input, select, button, textarea { font: inherit; color: inherit; }
 .shield { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35)); }
 
 /* ---- form controls ---- */
-input[type="text"], input[type="number"], select, textarea {
+input[type="text"], input[type="number"], input[type="url"], select, textarea {
   background: var(--woad-950); color: var(--ink); border: 1px solid var(--rule); border-radius: var(--radius);
   padding: 6px 9px; min-width: 0; min-height: 34px;
   transition: border-color 0.15s var(--ease);
 }
-input[type="text"]:hover, select:hover, textarea:hover { border-color: rgba(239, 233, 216, 0.45); }
+input[type="text"]:hover, input[type="url"]:hover, select:hover, textarea:hover { border-color: rgba(239, 233, 216, 0.45); }
 input::placeholder { color: var(--ink-faint); }
 select option { background: var(--woad-900); color: var(--ink); }
 textarea { user-select: text; -webkit-user-select: text; width: 100%; font-family: var(--mono); font-size: 12px; }
@@ -138,6 +138,55 @@ label[hidden] { display: none; }
 .screen header h2 { margin: 0; flex: 1; font-size: 30px; color: var(--ink); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .grid2 > .card { margin-bottom: 0; }
+
+/* ---- table mode seat picker: the table in plan, one seat per side ---- */
+.table-side {
+  --ts: 34px; position: relative; flex: none; width: var(--ts); height: var(--ts);
+  border-radius: var(--radius);
+}
+.table-side .ts-board { /* the screen lying on the table */
+  position: absolute; inset: 9px; border: 1px solid var(--rule); border-radius: 1px;
+  background: var(--plan-grid), var(--woad-950);
+  background-size: 4px 4px, 4px 4px, auto;
+}
+.ts-seat {
+  position: absolute; padding: 0; border: 0; background: transparent; cursor: pointer;
+  border-radius: 2px;
+}
+.ts-seat::after { /* the bench: a hairline at rest, an ochre bar once taken */
+  content: ""; position: absolute; background: var(--rule); border-radius: 1px;
+  transition: background-color 0.15s var(--ease), transform 0.2s var(--ease);
+}
+.ts-0, .ts-2 { left: 9px; right: 9px; height: 9px; }
+.ts-1, .ts-3 { top: 9px; bottom: 9px; width: 9px; }
+.ts-0 { bottom: 0; } .ts-2 { top: 0; } .ts-1 { left: 0; } .ts-3 { right: 0; }
+.ts-0::after, .ts-2::after { left: 2px; right: 2px; height: 2px; top: 50%; margin-top: -1px; }
+.ts-1::after, .ts-3::after { top: 2px; bottom: 2px; width: 2px; left: 50%; margin-left: -1px; }
+.ts-seat:hover::after { background: var(--ink); }
+.ts-seat[aria-checked="true"]::after { background: var(--ochre); }
+.ts-0[aria-checked="true"]::after, .ts-2[aria-checked="true"]::after { transform: scaleY(2); }
+.ts-1[aria-checked="true"]::after, .ts-3[aria-checked="true"]::after { transform: scaleX(2); }
+.ts-seat:focus-visible { outline-offset: 0; }
+.table-side:has(.ts-0[aria-checked="true"]) .ts-board { border-bottom-color: var(--ochre); }
+.table-side:has(.ts-1[aria-checked="true"]) .ts-board { border-left-color: var(--ochre); }
+.table-side:has(.ts-2[aria-checked="true"]) .ts-board { border-top-color: var(--ochre); }
+.table-side:has(.ts-3[aria-checked="true"]) .ts-board { border-right-color: var(--ochre); }
+.field-wide { display: flex; gap: var(--u); align-items: center; }
+.field-wide > span { flex: none; min-width: 72px; }
+.room-code {
+  font-family: var(--mono); font-size: 26px; font-weight: 700; letter-spacing: 0.22em;
+  padding: 2px 10px 2px 14px; color: var(--woad-950); background: var(--ochre); border-radius: var(--radius);
+  user-select: all; -webkit-user-select: all; font-variant-numeric: tabular-nums;
+}
+.room-input { font-family: var(--mono); letter-spacing: 0.18em; text-transform: uppercase; }
+.room-input::placeholder { letter-spacing: normal; text-transform: none; font-family: var(--sans); }
+/* host lobby: name | where | ready | colour | seat | remove, aligned in columns */
+.lobby-seat { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto 120px auto 76px; }
+.lobby-seat > select { width: 100%; }
+.lobby-seat > .btn { justify-self: end; }
+@media (max-width: 560px) { .lobby-seat { grid-template-columns: 22px minmax(0, 1fr) auto auto; } }
+.table-note { margin: 12px 0 0; }
+.table-note[hidden] { display: none; }
 .field { display: grid; grid-template-columns: 200px 1fr 52px; align-items: center; gap: 12px; margin-bottom: 8px; }
 .field > span:last-child { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
 table { border-collapse: collapse; width: 100%; }
@@ -300,6 +349,10 @@ th { font-weight: 600; color: var(--ink-soft); font-size: 12px; }
 
 /* ---- touch: Android tablets and phones ---- */
 @media (pointer: coarse) {
+  .table-side { --ts: 44px; }
+  .table-side .ts-board { inset: 12px; }
+  .ts-0, .ts-2 { left: 12px; right: 12px; height: 12px; }
+  .ts-1, .ts-3 { top: 12px; bottom: 12px; width: 12px; }
   .btn { min-height: 44px; }
   .btn.small, .btn.icon-only { min-height: 40px; min-width: 40px; }
   input[type="text"], select { min-height: 42px; }

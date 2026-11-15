@@ -17,7 +17,8 @@ import { ALL_EDGE_CONFIGS, catalog, getTopology, rotateTopology, topologiesForEd
 import { edgesToString } from "../../procedural/topology/generator";
 import { fieldContinuity, mainContinuity, physicalRoadContinuity } from "../../procedural/topology/validator";
 import type { App } from "../app";
-import { BoardView } from "../boardRenderer";
+import { createBoardView } from "../boardRenderer";
+import type { Board } from "../boardRenderer";
 import { icon } from "../heraldry";
 import { button, h, modal, replace, select } from "../dom";
 import { menuScreen } from "./menu";
@@ -33,7 +34,7 @@ export function labScreen(app: App) {
   const big = h("canvas", { class: "big", width: 512, height: 512 });
   const info = h("div", { class: "col" });
   const controls = h("div", { class: "col" });
-  let assembled: BoardView | null = null;
+  let assembled: Board | null = null;
 
   const matrix = (title: string, labels: readonly string[], m: boolean[][]) =>
     h("div", null, h("div", { class: "small muted" }, title), h("table", { class: "matrix" },
@@ -155,7 +156,7 @@ export function labScreen(app: App) {
     const canvas = h("canvas", { class: "board", style: { position: "static", width: "100%", height: "60vh", borderRadius: "8px" } });
     const m = modal("Tuiles assemblées", h("div", null, h("p", { class: "muted small" }, "Plateau aléatoire : vérifiez la continuité des chemins, des cités et des prairies d'une tuile à l'autre. Glisser et molette pour explorer."), canvas),
       [button("Autre tirage", () => build()), button("Fermer", () => m.close(), "primary")], () => { assembled?.destroy(); assembled = null; });
-    const view = (assembled = new BoardView(canvas, app.cache));
+    const view = (assembled = createBoardView(canvas, app.cache, app.settings.board3d));
     view.interactive = false;
     const build = () => {
       const s = createGame({ mode: "sandbox", deckSize: 0, params: { ...DEFAULT_DECK_PARAMS, diversity: 1.6 }, farmers: true, seed: "lab-" + ((Math.random() * 1e9) | 0), players: [{ id: "a", name: "", color: 0, kind: "bot" }, { id: "b", name: "", color: 1, kind: "bot" }] });

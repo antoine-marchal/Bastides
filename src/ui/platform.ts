@@ -12,8 +12,12 @@ import type { BotRunner, HostTransport } from "../multiplayer/authority";
 export const isTauri = (): boolean => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 // ---------------------------------------------------------------- settings
-export interface Settings { sound: boolean; autoCenter: boolean; showLegal: boolean; botDelay: number; name: string; perf: boolean; tableRotation: boolean }
-const DEFAULTS: Settings = { sound: true, autoCenter: true, showLegal: true, botDelay: 600, name: "Joueur", perf: false, tableRotation: false };
+export interface Settings { sound: boolean; autoCenter: boolean; showLegal: boolean; botDelay: number; name: string; perf: boolean; board3d: boolean;
+  /** Table mode: side of the screen of each human seat of the last local set-up (0 bottom, 1 left, 2 top, 3 right). */
+  tableSides: number[];
+  /** Online relay server URL. */
+  serverUrl: string }
+const DEFAULTS: Settings = { sound: true, autoCenter: true, showLegal: true, botDelay: 600, name: "Joueur", perf: false, board3d: true, tableSides: [], serverUrl: "" };
 export function loadSettings(): Settings {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem("bastides.settings") ?? "{}") }; } catch { return { ...DEFAULTS }; }
 }

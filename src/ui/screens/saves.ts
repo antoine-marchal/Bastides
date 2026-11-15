@@ -35,6 +35,7 @@ export function savesScreen(app: App) {
             const { rec, state } = loadSave(save!);
             const session = new HostedSession(createBotService(() => app.settings.botDelay));
             session.host.resume(rec, state);
+            session.useSides(app.settings.tableSides);
             app.show(gameScreen(session));
           } catch (e) { toast((e as Error).message, "error"); }
         }, "primary small") : null,

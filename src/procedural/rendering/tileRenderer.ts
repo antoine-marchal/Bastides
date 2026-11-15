@@ -13,6 +13,7 @@ import type { TileGeometry } from "../geometry/tileGeometry";
 import { generateDecor } from "./decor";
 import type { House, Tree } from "./decor";
 import { fbm, valueNoise } from "./noise";
+import { renderTile3D } from "./tile3d";
 
 export type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
@@ -199,7 +200,7 @@ export function drawMeeple(ctx: Ctx, x: number, y: number, size: number, color: 
     ctx.bezierCurveTo(9.5 * s, 3 * s, 9 * s, -2 * s, 3 * s, -3.2 * s);
     ctx.closePath();
   };
-  ctx.save(); ctx.translate(1.4 * s, 2 * s); body(); ctx.fillStyle = "rgba(20,15,10,0.35)"; ctx.fill(); ctx.restore();
+  ctx.save(); ctx.translate(2.2 * s, -0.4 * s); body(); ctx.fillStyle = "rgba(20,15,10,0.35)"; ctx.fill(); ctx.restore();
   body(); ctx.fillStyle = color; ctx.fill();
   ctx.lineWidth = 1.5 * s; ctx.strokeStyle = "rgba(25,18,10,0.85)"; ctx.lineJoin = "round"; ctx.stroke();
   ctx.fillStyle = "rgba(255,255,255,0.32)";
@@ -217,10 +218,18 @@ export interface RenderOptions {
   visualSeed: number;
   /** 0 = far (simplified), 1 = nominal, 2 = close. */
   detail?: number;
+  /** Force the flat Canvas 2D painter instead of the 3D diorama. */
+  flat?: boolean;
 }
 
 /** Paint a tile on a context whose origin is the tile's top-left corner. */
 export function renderTile(ctx: Ctx, g: TileGeometry, o: RenderOptions): void {
+  if (!o.flat && renderTile3D(ctx, g, o)) return;
+  renderTile2D(ctx, g, o);
+}
+
+/** Canvas 2D painter: fallback when WebGL is unavailable, and the flat style. */
+export function renderTile2D(ctx: Ctx, g: TileGeometry, o: RenderOptions): void {
   const px = o.px, scale = px / S, rot = o.rotation & 3, detail = o.detail ?? 1;
   const { kind } = g.mask;
   // 1. Ground: per-pixel world-space textures (continuous from tile to tile).

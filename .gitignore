@@ -13,3 +13,5 @@ src-tauri/android-release.jks
 src-tauri/android-release.jks.bak
 src-tauri/android-keystore.properties
 dist-android/
+
+server/.vercel

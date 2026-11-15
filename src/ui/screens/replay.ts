@@ -2,7 +2,8 @@ import { TurnPhase } from "../../game/state";
 import { ReplayPlayer } from "../../persistence/replay";
 import type { Recording } from "../../persistence/serialization";
 import type { App } from "../app";
-import { BoardView } from "../boardRenderer";
+import { createBoardView } from "../boardRenderer";
+import type { Board } from "../boardRenderer";
 import { button, h, replace, select, toast } from "../dom";
 import { icon, shield } from "../heraldry";
 import type { IconName } from "../heraldry";
@@ -17,7 +18,7 @@ export function replayScreen(rec: Recording) {
     let player: ReplayPlayer;
     try { player = new ReplayPlayer(rec); } catch (e) { toast((e as Error).message, "error"); return savesScreen(app); }
     const canvas = h("canvas", { class: "board" });
-    const view = new BoardView(canvas, app.cache);
+    const view = createBoardView(canvas, app.cache, app.settings.board3d);
     view.interactive = false;
     const range = h("input", { type: "range", min: 0, max: player.length, step: 1, value: 0, class: "grow", "aria-label": "Position dans la partie", oninput: () => go(Number(range.value)) });
     const label = h("span", { class: "small replay-pos" });

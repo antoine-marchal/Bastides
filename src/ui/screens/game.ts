@@ -8,7 +8,8 @@ import { MEEPLES_PER_PLAYER, TurnPhase } from "../../game/state";
 import type { GameState, ScoreEvent } from "../../game/state";
 import { serializeSave, toSave } from "../../persistence/serialization";
 import type { App } from "../app";
-import { BoardView } from "../boardRenderer";
+import { createBoardView } from "../boardRenderer";
+import type { Board } from "../boardRenderer";
 import type { Highlight } from "../boardRenderer";
 import { PLAYER_COLORS, button, h, modal, replace, toast } from "../dom";
 import { icon, shield } from "../heraldry";
@@ -35,11 +36,12 @@ export function regionHighlight(state: GameState, tileIndex: number, feature: nu
 export function gameScreen(session: GameSession) {
   return (app: App) => {
     const players = session.state?.config.players ?? [];
-    const tableMode = session.kind === "local" && app.settings.tableRotation &&
-      players.length >= 2 && players.length <= 4 && players.every((p) => p.kind === "human");
+    // Table mode: several humans share this screen and at least one sits elsewhere than the bottom.
+    const sides = players.map((_, i) => session.tableSide(i));
+    const tableMode = sides.filter((x) => x !== null).length >= 2 && sides.some((x) => x !== null && x !== 0);
     const stage = h("div", { class: "game-stage" });
     const canvas = h("canvas", { class: "board" });
-    const view = new BoardView(canvas, app.cache);
+    const view = createBoardView(canvas, app.cache, app.settings.board3d);
     const playersEl = h("div", { class: "panel players" });
     const logEl = h("div", { class: "log" });
     const tileCanvas = h("canvas", { width: 256, height: 256 });
@@ -57,6 +59,7 @@ export function gameScreen(session: GameSession) {
     let overShown = false;
     let disposed = false;
     let lastSavedRev = -1;
+    let focusedTurn = -1, focusTimer = 0;
 
     const state = () => session.state;
     const name = (i: number) => state()!.config.players[i].name;
@@ -153,7 +156,9 @@ export function gameScreen(session: GameSession) {
       if (!s || disposed) return;
       const mine = session.canAct();
       if (tableMode && s.phase !== TurnPhase.GAME_OVER) {
-        view.quarterTurns = s.player * (players.length === 2 ? 2 : 1);
+        // Face the active human; during a bot's or a remote player's turn, stay as we are.
+        const side = session.tableSide(s.player);
+        if (side !== null) view.quarterTurns = side;
         stage.dataset.turn = String(view.quarterTurns);
       }
       // New turn or new revision: reset transient UI state.
@@ -168,6 +173,7 @@ export function gameScreen(session: GameSession) {
           if (app.settings.autoCenter && view.isOffCentre(t.x, t.y)) view.centerOn(t.x, t.y);
         }
         if (inspectEl.style.display !== "none") { inspectEl.style.display = "none"; view.setHighlight(null); }
+        focusOwnTurn(s, mine);
         autosave(s);
       }
       // Score events since the last refresh: pop-ups, sound, log.
@@ -214,6 +220,23 @@ export function gameScreen(session: GameSession) {
         mine && placing && s.config.mode === "sandbox" ? button("Terminer et compter", () => act({ type: "END_GAME" })) : null);
       if (s.phase === TurnPhase.GAME_OVER && !overShown) { overShown = true; playSound("end", app.settings.sound); showResults(); }
       view.requestRender();
+    }
+
+    /**
+     * At the start of a turn played here, bring the camera back to where this player last
+     * built. When an opponent has just laid a tile, show it first, then travel home.
+     */
+    function focusOwnTurn(s: GameState, mine: boolean): void {
+      if (!app.settings.autoCenter || !mine || s.phase !== TurnPhase.PLACE_TILE || focusedTurn === s.tiles.length) return;
+      focusedTurn = s.tiles.length;
+      clearTimeout(focusTimer);
+      let own = -1;
+      for (let i = s.tiles.length - 1; i >= 0; i--) if (s.tiles[i].by === s.player) { own = i; break; }
+      if (own < 0) return; // first turn: nothing of ours on the board yet
+      const t = s.tiles[own], latest = s.tiles[s.tiles.length - 1];
+      const go = () => { if (!disposed && !pending && state() === s && session.canAct()) view.centerOn(t.x, t.y); };
+      if (latest.by !== s.player && latest !== t && seenTiles > 1) focusTimer = window.setTimeout(go, 900);
+      else go();
     }
 
     function showByNode(ev: ScoreEvent): void {
@@ -311,6 +334,6 @@ export function gameScreen(session: GameSession) {
     stage.appendChild(el);
     const detachBanner = attachBanner(el, tableMode);
     queueMicrotask(refresh);
-    return { el: stage, dispose: () => { detachBanner(); window.removeEventListener("keydown", onKey); clearInterval(perfTimer); view.destroy(); if (!disposed) leave(); } };
+    return { el: stage, dispose: () => { clearTimeout(focusTimer); detachBanner(); window.removeEventListener("keydown", onKey); clearInterval(perfTimer); view.destroy(); if (!disposed) leave(); } };
   };
 }
